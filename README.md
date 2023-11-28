@@ -14,10 +14,10 @@ Quick start
 1. Renaming the controller from `NewPlugin` to `MyPlugin`. In a shell (Git Bash on Windows, replace sed with gsed on macOS):
 
 ```bash
-sed -i -e's/NewPlugin/MyPlugin/g' `find . -type f`
-git mv src/NewPlugin.cpp src/MyPlugin.cpp
-git mv src/NewPlugin.h src/MyPlugin.h
-git mv etc/NewPlugin.in.yaml etc/MyPlugin.in.yaml
+sed -i -e's/NewPlugin/RobotModelUpdate/g' `find src etc tests -type f`
+git mv src/NewPlugin.cpp src/RobotModelUpdate.cpp
+git mv src/NewPlugin.h src/RobotModelUpdate.h
+git mv etc/NewPlugin.in.yaml etc/RobotModelUpdate.in.yaml
 ```
 
 2. You can customize the project name in vcpkg.json as well, note that this must follow [vcpkg manifest rules](https://github.com/microsoft/vcpkg/blob/master/docs/users/manifests.md)
