@@ -2,17 +2,17 @@
 
 human:
   Celia:
-    BodyHeight: 1.64 # Top of the head
-    FootLength: 0.25
-    ShoulderHeight: 1.395 # Height of C7 spine (pointy)
-    ShoulderWidth: 0.36 # Left to right top shoulder bone (so not exactly articulation!)
-    ElbowSpan: 0.785
-    WristSpan: 1.235
-    ArmSpan: 1.61 # This is finger to finger in T pose
-    HipHeight: 0.905 # attachment of leg to hip
-    HipWidth: 0.23 # forward bone of illiac -> ~width of attachment
-    KneeHeight: 0.5 # bottom of upper leg bone
-    AnkleHeight: 0.135
+    BodyHeight:  # Top of the head
+    FootLength:
+    ShoulderHeight: # Height of C7 spine (pointy)
+    ShoulderWidth: # Left to right top shoulder bone (so not exactly articulation!)
+    ElbowSpan:
+    WristSpan:
+    ArmSpan: # This is finger to finger in T pose
+    HipHeight: # attachment of leg to hip
+    HipWidth: # forward bone of illiac -> ~width of attachment
+    KneeHeight: # bottom of upper leg bone
+    AnkleHeight:
     ExtraShoe: 0 # Extra thickness of shoe sole (to avoid)
 
 Joints:
@@ -38,5 +38,5 @@ LLeg_0: [0 HipWidth/2 HipHeight-(HipHeight + 0.08)]
 LShin_0: [0 0 KneeHeight-HipHeight]
 LAnkle_0: [0 0 AnkleHeight-KneeHeight]
 
-#joints: 
+#joints:
 #add proper human joints

@@ -28,7 +28,6 @@ struct RobotUpdate
 #undef MEMBER
 };
 
-
 struct RobotModelUpdate : public mc_control::GlobalPlugin
 {
   void init(mc_control::MCGlobalController & controller, const mc_rtc::Configuration & config) override;
@@ -46,6 +45,7 @@ struct RobotModelUpdate : public mc_control::GlobalPlugin
 protected:
   void updateRobotModel(mc_control::MCController & ctl);
   void resetToDefault(mc_rbdyn::Robot & robot);
+  void configFromXsens(mc_control::MCController & ctl);
 
 protected:
   std::string robot_;
