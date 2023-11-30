@@ -11,8 +11,20 @@ RobotModelUpdate::~RobotModelUpdate() = default;
 
 void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const mc_rtc::Configuration & config)
 {
+  auto& ctl = controller.controller();
   mc_rtc::log::info("RobotModelUpdate::init called with configuration:\n{}", config.dump(true, true));
-  robot_ = config("robot", controller.controller().robot().name());
+  if (!ctl.config().has("RobotModelUpdate"))
+  {
+    robot_ = config("robot", controller.controller().robot().name());
+  }else
+  {
+    auto ctlConf = ctl.config()("RobotModelUpdate");
+    ctlConf("robot", robot_);
+  }
+
+
+  config_.load(config);
+  
   reset(controller);
 }
 
@@ -25,8 +37,42 @@ void RobotModelUpdate::reset(mc_control::MCGlobalController & controller)
   auto & robot = ctl.robot(robot_);
 
   std::vector<RobotUpdateBody> joints;
-  joints.emplace_back(RobotUpdateBody{"waist", Eigen::Vector3d{1, 1, 1}});
-  joints.push_back(RobotUpdateBody{"WAIST_Y", Eigen::Vector3d{1, 1, 1}});
+  
+  auto bodyDim = config_("human")("Celia");
+  double BodyHeight = bodyDim("BodyHeight");
+  double HipHeight = bodyDim("HipHeight");
+  double LegHeight = HipHeight - 0.1;
+  double HipWidth = bodyDim("HipWidth");
+  double LegsWidth = HipWidth - 0.03;
+  double ShoulderHeight = bodyDim("ShoulderHeight");
+  double ArmHeight = ShoulderHeight - 0.15;
+  double ShoulderWidth = bodyDim("ShoulderWidth");
+  double ArmsWidth = ShoulderWidth - 0.06;
+  double ElbowSpan = bodyDim("ElbowSpan");
+  double WristSpan = bodyDim("WristSpan");
+  double KneeHeight = bodyDim("KneeHeight");
+  double AnkleHeight = bodyDim("AnkleHeight");
+
+  joints.push_back(RobotUpdateBody{"Head_0", Eigen::Vector3d{-0.03, 0, ShoulderHeight - HipHeight}});
+
+  joints.push_back(RobotUpdateBody{"Torso_0", Eigen::Vector3d{0, 0, LegHeight - HipHeight}});
+
+  joints.push_back(RobotUpdateBody{"LArm_0", Eigen::Vector3d{-0.03, ArmsWidth/2, ArmHeight - HipHeight}});
+  joints.push_back(RobotUpdateBody{"LElbow", Eigen::Vector3d{0, ((ElbowSpan-ArmsWidth)/2)*0.66, 0}});
+  joints.push_back(RobotUpdateBody{"LForearm", Eigen::Vector3d{0, ((ElbowSpan-ArmsWidth)/2)*0.33, 0}});
+  joints.push_back(RobotUpdateBody{"LWrist_0", Eigen::Vector3d{0, (WristSpan-ElbowSpan)/2, 0}});
+  joints.push_back(RobotUpdateBody{"RArm_0", Eigen::Vector3d{-0.03, -ArmsWidth/2, ArmHeight - HipHeight}});
+  joints.push_back(RobotUpdateBody{"RElbow", Eigen::Vector3d{0, -((ElbowSpan-ArmsWidth)/2)*0.66, 0}});
+  joints.push_back(RobotUpdateBody{"RForearm", Eigen::Vector3d{0, -((ElbowSpan-ArmsWidth)/2)*0.33, 0}});
+  joints.push_back(RobotUpdateBody{"RWrist_0", Eigen::Vector3d{0, -(WristSpan-ElbowSpan)/2, 0}});
+
+  joints.push_back(RobotUpdateBody{"LLeg_0", Eigen::Vector3d{0, LegsWidth/2, LegHeight - HipHeight }});
+  joints.push_back(RobotUpdateBody{"LShin_0", Eigen::Vector3d{0, 0, KneeHeight - LegHeight}});
+  joints.push_back(RobotUpdateBody{"LAnkle_0", Eigen::Vector3d{0, 0, AnkleHeight - KneeHeight}});
+  joints.push_back(RobotUpdateBody{"RLeg_0", Eigen::Vector3d{0, -LegsWidth/2, LegHeight - HipHeight}});
+  joints.push_back(RobotUpdateBody{"RShin_0", Eigen::Vector3d{0, 0, KneeHeight - LegHeight}});
+  joints.push_back(RobotUpdateBody{"RAnkle_0", Eigen::Vector3d{0, 0, AnkleHeight - KneeHeight}});
+
   mc_rtc::Configuration conf;
   conf.add("joints", joints);
   mc_rtc::log::info("Conf is:\n{}", conf.dump(true, true));
@@ -37,15 +83,16 @@ void RobotModelUpdate::reset(mc_control::MCGlobalController & controller)
 
   gui.removeElements(this);
   gui.addElement(this,
-      {"RobotModelUpdate", robot_},
+      {"Plugin", "RobotModelUpdate", robot_},
       mc_rtc::gui::Button("Reset to default",
         [this, &ctl]()
         {
           resetToDefault(ctl.robot(robot_));
+          resetToDefault(ctl.outputRobot(robot_));
         })
   );
 
-  robotUpdate.addToGUI(gui, {"RobotModelUpdate", robot_}, "Update Robot Model", 
+  robotUpdate.addToGUI(gui, {"Plugin", "RobotModelUpdate", robot_}, "Update Robot Model", 
        [this, &ctl]() {
         mc_rtc::log::info("Updated robot schema");
         updateRobotModel(ctl);
@@ -78,9 +125,9 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
         auto jIdx = robot.jointIndexByName(joint.name);
         auto originalTransform = robot.mb().transform(jIdx);
         auto newTransform = originalTransform;
-        newTransform.translation() = originalTransform.translation().cwiseProduct(joint.scale);
+        newTransform.translation() = joint.relTranslation;
         robot.mb().transform(jIdx, newTransform);
-        mc_rtc::log::info("Updated transform for joint {} from {} to {} (scale: {})", joint.name, originalTransform.translation().transpose(), newTransform.translation().transpose(), joint.scale);
+        mc_rtc::log::info("Updated transform for joint {} from {} to {}", joint.name, originalTransform.translation().transpose(), newTransform.translation().transpose());
       }
     }
     robot.forwardKinematics();

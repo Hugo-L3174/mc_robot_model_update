@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 project(
   RobotModelUpdate
@@ -23,6 +23,7 @@ set(plugin_SRC src/RobotModelUpdate.cpp)
 
 set(plugin_HDR src/RobotModelUpdate.h)
 
+option(AUTOLOAD_RobotModelUpdate_PLUGIN "Automatically load ${PLUGIN_NAME} plugin" OFF)
 # The add_plugin macro is provided by mc_rtc
 add_plugin(RobotModelUpdate "${plugin_SRC}" "${plugin_HDR}")
 

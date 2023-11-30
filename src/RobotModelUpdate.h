@@ -16,7 +16,7 @@ struct RobotUpdateBody
   MEMBER(std::string, name, "Name of the body")
 #undef MEMBER
 #define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_OPTIONAL_DEFAULT_MEMBER(RobotUpdateBody, __VA_ARGS__))
-  MEMBER(Eigen::Vector3d, scale, "Scale")
+  MEMBER(Eigen::Vector3d, relTranslation, "RelTranslation")
 #undef MEMBER
 };
 
@@ -50,6 +50,9 @@ protected:
 protected:
   std::string robot_;
   RobotUpdate robotUpdate;
+
+private:
+  mc_rtc::Configuration config_;
 };
 
 } // namespace mc_plugin
