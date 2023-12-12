@@ -2,7 +2,6 @@
 
 #include <mc_control/GlobalPluginMacros.h>
 #include <mc_rbdyn/RobotLoader.h>
-#include <mc_rtc/Schema.h>
 
 namespace mc_plugin
 {
@@ -13,17 +12,12 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
 {
   auto & ctl = controller.controller();
   mc_rtc::log::info("RobotModelUpdate::init called with configuration:\n{}", config.dump(true, true));
-  if(!ctl.config().has("RobotModelUpdate"))
+  config_ = config;
+  if(auto ctlConfig = ctl.config().find("RobotModelUpdate"))
   {
-    robot_ = config("robot", controller.controller().robot().name());
+    config_.load(*ctlConfig);
   }
-  else
-  {
-    auto ctlConf = ctl.config()("RobotModelUpdate");
-    ctlConf("robot", robot_);
-  }
-
-  config_.load(config);
+  robot_ = config_("robot", ctl.robot().name());
 
   reset(controller);
 }
@@ -68,101 +62,102 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
 {
   // New version: using data directly from xsens to scale
   // step 1: get poses (world frame)
-  auto Hips_W_0 = ctl.datastore()
+  auto X_Hips_0 = ctl.datastore()
                       .call<sva::PTransformd>("XsensPlugin::GetSegmentPose", static_cast<const std::string &>("Pelvis"))
                       .inv();
-  Hips_W_0.translation().z() += -0.09; // origin of hips is at the top
+  X_Hips_0.translation().z() += -0.09; // origin of hips is at the top
 
-  auto Head_0_W =
+  auto X_0_Head =
       ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose", static_cast<const std::string &>("Head"));
-  auto Torso_0_W =
+  auto X_0_Torso =
       ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose", static_cast<const std::string &>("T8"));
 
-  auto LArm_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
-                                                       static_cast<const std::string &>("Left Upper Arm"));
-  auto LForearm_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
-                                                           static_cast<const std::string &>("Left Forearm"));
-  auto LWrist_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_LArm = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+                                                         static_cast<const std::string &>("Left Upper Arm"));
+  auto X_0_LForearm = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+                                                             static_cast<const std::string &>("Left Forearm"));
+  auto X_0_LWrist = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                            static_cast<const std::string &>("Left Hand"));
 
-  auto RArm_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
-                                                       static_cast<const std::string &>("Right Upper Arm"));
-  auto RForearm_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
-                                                           static_cast<const std::string &>("Right Forearm"));
-  auto RWrist_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_RArm = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+                                                         static_cast<const std::string &>("Right Upper Arm"));
+  auto X_0_RForearm = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+                                                             static_cast<const std::string &>("Right Forearm"));
+  auto X_0_RWrist = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                            static_cast<const std::string &>("Right Hand"));
 
-  auto LLeg_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_LLeg = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                          static_cast<const std::string &>("Left Upper Leg"));
-  auto LShin_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_LShin = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                           static_cast<const std::string &>("Left Lower Leg"));
-  auto LAnkle_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_LAnkle = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                            static_cast<const std::string &>("Left Foot"));
 
-  auto RLeg_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_RLeg = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                          static_cast<const std::string &>("Right Upper Leg"));
-  auto RShin_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_RShin = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                           static_cast<const std::string &>("Right Lower Leg"));
-  auto RAnkle_0_W = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
+  auto X_0_RAnkle = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                            static_cast<const std::string &>("Right Foot"));
 
   // step 2: convert world poses to local frames (kinematic tree from hips link)
-  auto Head_Hips = Head_0_W * Hips_W_0;
-  Head_Hips.translation().x() += -0.04; // offset from middle of body to actual joint
-  Head_Hips.translation().y() = 0; // center
+  auto X_Hips_Head = X_0_Head * X_Hips_0;
+  X_Hips_Head.translation().x() += -0.04; // offset from middle of body to actual joint
+  X_Hips_Head.translation().y() = 0; // center
 
-  auto LArm_Hips = LArm_W * Hips_W_0;
+  auto X_Hips_LArm = X_0_LArm * X_Hips_0;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
-  auto LForearm_Arm = LForearm_W * LArm_W.inv();
-  LForearm_Arm.translation().x() += -0.03; // sensor is front of the arm
-  Eigen::Vector3d LElbow_Arm = 0.66 * LForearm_Arm.translation();
-  Eigen::Vector3d LForearm_Elbow = 0.33 * LForearm_Arm.translation();
-  auto LWrist_Forearm = LWrist_0_W * LForearm_W.inv();
+  auto X_LArm_LForearm = X_0_LForearm * X_0_LArm.inv();
+  X_LArm_LForearm.translation().x() += -0.03; // sensor is front of the arm
+  Eigen::Vector3d X_LArm_LElbow = 0.66 * X_LArm_LForearm.translation();
+  Eigen::Vector3d X_LElbow_LForearm = 0.33 * X_LArm_LForearm.translation();
+  auto X_LForearm_LWrist = X_0_LWrist * X_0_LForearm.inv();
 
-  auto RArm_Hips = RArm_W * Hips_W_0;
+  auto X_Hips_RArm = X_0_RArm * X_Hips_0;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
-  auto RForearm_Arm = RForearm_W * RArm_W.inv();
-  RForearm_Arm.translation().x() += -0.03; // sensor is front of the arm
-  Eigen::Vector3d RElbow_Arm = 0.66 * RForearm_Arm.translation();
-  Eigen::Vector3d RForearm_Elbow = 0.33 * RForearm_Arm.translation();
-  auto RWrist_Forearm = RWrist_0_W * RForearm_W.inv();
+  auto X_RArm_RForearm = X_0_RForearm * X_0_RArm.inv();
+  X_RArm_RForearm.translation().x() += -0.03; // sensor is front of the arm
+  Eigen::Vector3d X_RArm_RElbow = 0.66 * X_RArm_RForearm.translation();
+  Eigen::Vector3d X_RElbow_RForearm = 0.33 * X_RArm_RForearm.translation();
+  auto X_RForearm_RWrist = X_0_RWrist * X_0_RForearm.inv();
 
-  auto LLeg_Hips = LLeg_0_W * Hips_W_0;
-  auto LShin_Leg = LShin_0_W * LLeg_0_W.inv();
-  auto LAnkle_Shin = LAnkle_0_W * LShin_0_W.inv();
+  auto X_Hips_LLeg = X_0_LLeg * X_Hips_0;
+  auto X_LLeg_LShin = X_0_LShin * X_0_LLeg.inv();
+  auto X_LShin_LAnkle = X_0_LAnkle * X_0_LShin.inv();
 
-  auto RLeg_Hips = RLeg_0_W * Hips_W_0;
-  auto RShin_Leg = RShin_0_W * RLeg_0_W.inv();
-  auto RAnkle_Shin = RAnkle_0_W * RShin_0_W.inv();
+  auto X_Hips_RLeg = X_0_RLeg * X_Hips_0;
+  auto X_RLeg_RShin = X_0_RShin * X_0_RLeg.inv();
+  auto X_RShin_RAnkle = X_0_RAnkle * X_0_RShin.inv();
 
   // step 3: update joint configs using local translations
 
   std::vector<RobotUpdateBody> joints;
 
-  joints.push_back(RobotUpdateBody{"Head_0", Head_Hips.translation()});
+  joints.push_back(RobotUpdateBody{"Head_0", X_Hips_Head.translation()});
 
   // joints.push_back(RobotUpdateBody{"Torso_0", Hips_W_0.inv().translation()});
 
-  joints.push_back(RobotUpdateBody{"LArm_0", LArm_Hips.translation()});
-  joints.push_back(RobotUpdateBody{"LElbow", LElbow_Arm});
-  joints.push_back(RobotUpdateBody{"LForearm", LForearm_Elbow});
-  joints.push_back(RobotUpdateBody{"LWrist_0", LWrist_Forearm.translation()});
-  joints.push_back(RobotUpdateBody{"RArm_0", RArm_Hips.translation()});
-  joints.push_back(RobotUpdateBody{"RElbow", RElbow_Arm});
-  joints.push_back(RobotUpdateBody{"RForearm", RForearm_Elbow});
-  joints.push_back(RobotUpdateBody{"RWrist_0", RWrist_Forearm.translation()});
+  joints.push_back(RobotUpdateBody{"LArm_0", X_Hips_LArm.translation()});
+  joints.push_back(RobotUpdateBody{"LElbow", X_LArm_LElbow});
+  joints.push_back(RobotUpdateBody{"LForearm", X_LElbow_LForearm});
+  joints.push_back(RobotUpdateBody{"LWrist_0", X_LForearm_LWrist.translation()});
+  joints.push_back(RobotUpdateBody{"RArm_0", X_Hips_RArm.translation()});
+  joints.push_back(RobotUpdateBody{"RElbow", X_RArm_RElbow});
+  joints.push_back(RobotUpdateBody{"RForearm", X_RElbow_RForearm});
+  joints.push_back(RobotUpdateBody{"RWrist_0", X_RForearm_RWrist.translation()});
 
-  joints.push_back(RobotUpdateBody{"LLeg_0", LLeg_Hips.translation()});
-  joints.push_back(RobotUpdateBody{"LShin_0", LShin_Leg.translation()});
-  joints.push_back(RobotUpdateBody{"LAnkle_0", LAnkle_Shin.translation()});
-  joints.push_back(RobotUpdateBody{"RLeg_0", RLeg_Hips.translation()});
-  joints.push_back(RobotUpdateBody{"RShin_0", RShin_Leg.translation()});
-  joints.push_back(RobotUpdateBody{"RAnkle_0", RAnkle_Shin.translation()});
+  joints.push_back(RobotUpdateBody{"LLeg_0", X_Hips_LLeg.translation()});
+  joints.push_back(RobotUpdateBody{"LShin_0", X_LLeg_LShin.translation()});
+  joints.push_back(RobotUpdateBody{"LAnkle_0", X_LShin_LAnkle.translation()});
+  joints.push_back(RobotUpdateBody{"RLeg_0", X_Hips_RLeg.translation()});
+  joints.push_back(RobotUpdateBody{"RShin_0", X_RLeg_RShin.translation()});
+  joints.push_back(RobotUpdateBody{"RAnkle_0", X_RShin_RAnkle.translation()});
 
   // step 4: load configuration
-  mc_rtc::Configuration conf;
-  conf.add("joints", joints);
-  robotUpdate.load(conf);
+  // mc_rtc::Configuration conf;
+  // conf.add("joints", joints);
+  // robotUpdate.load(conf);
+  robotUpdate.joints = joints;
   mc_rtc::log::info("Robot Update is:\n{}", robotUpdate.dump(true, true));
 }
 

@@ -14,29 +14,3 @@ human:
     KneeHeight: # bottom of upper leg bone
     AnkleHeight:
     ExtraShoe: 0 # Extra thickness of shoe sole (to avoid)
-
-Joints:
-  - Head_0: orig torso link -> orig head link
-  - LArm_0/RArm_0: orig TorsoLink -> orig torso2l/rshoulder_1 (orig upper arm)
-  - LElbow/RElbow: orig LArmLink/RArmLink (haut manche) -> orig LElbowLink/RElbowLink (bas de la manche)
-  - LForearm/RForearm: orig LElbowLink/RElbowLink -> LForearmLink/RForearmLink (orig vrai avant bras)
-  - LWrist_0/RWrist_0: orig ForearmLink -> forearm2wrist_1 (orig of hand)
-  - LLeg_0/RLeg_0: orig HipsLink -> torso2lleg_1/torso2rleg_0 (orig upper leg)
-  - LShin_0/RShin_0: orig LLegLink -> orig LShinLink
-  - LAnkle_0/RAnkle_0: orig LShinLink ->orig shin2lankle_1/shin2rankle_1
-
-# HipsLink est à peu près à 8cm au dessus de HipHeight (attache jambe)
-
-Head_0: [0 0 (BodyHeight-0.17)-(HipHeight + 0.08)] # taille tête ~17 cm
-LArm_0: [0 (ShoulderWidth-0.06)/2 (ShoulderHeight-0.05)-(HipHeight + 0.08)]
-#Elbow y + Forearm y = ElbowSpan
-LElbow: [0 ElbowSpan/4 0]
-LForearm: [0 ElbowSpan/4 0]
-LWrist: [0 (WristSpan-ElbowSpan)/2 0]
-
-LLeg_0: [0 HipWidth/2 HipHeight-(HipHeight + 0.08)]
-LShin_0: [0 0 KneeHeight-HipHeight]
-LAnkle_0: [0 0 AnkleHeight-KneeHeight]
-
-#joints:
-#add proper human joints
