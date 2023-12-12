@@ -12,11 +12,9 @@ namespace mc_plugin
 struct RobotUpdateBody
 {
   MC_RTC_NEW_SCHEMA(RobotUpdateBody)
-#define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_REQUIRED_DEFAULT_MEMBER(RobotUpdateBody, __VA_ARGS__))
-  MEMBER(std::string, name, "Name of the body")
-#undef MEMBER
-#define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_OPTIONAL_DEFAULT_MEMBER(RobotUpdateBody, __VA_ARGS__))
-  MEMBER(Eigen::Vector3d, relTranslation, "RelTranslation")
+#define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_MEMBER(RobotUpdateBody, __VA_ARGS__))
+  MEMBER(std::string, name, "Name of the body", mc_rtc::schema::None, "");
+  MEMBER(Eigen::Vector3d, relTranslation, "RelTranslation", mc_rtc::schema::None, Eigen::Vector3d::Zero());
 #undef MEMBER
 };
 
