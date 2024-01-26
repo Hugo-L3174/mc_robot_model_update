@@ -9,12 +9,21 @@
 namespace mc_plugin
 {
 
+struct RobotUpdateJoint
+{
+  MC_RTC_NEW_SCHEMA(RobotUpdateJoint)
+#define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_MEMBER(RobotUpdateJoint, __VA_ARGS__))
+  MEMBER(std::string, name, "Name of the joint", mc_rtc::schema::None, "");
+  MEMBER(Eigen::Vector3d, relTranslation, "relTranslation", mc_rtc::schema::None, Eigen::Vector3d::Zero());
+#undef MEMBER
+};
+
 struct RobotUpdateBody
 {
   MC_RTC_NEW_SCHEMA(RobotUpdateBody)
 #define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_MEMBER(RobotUpdateBody, __VA_ARGS__))
   MEMBER(std::string, name, "Name of the body", mc_rtc::schema::None, "");
-  MEMBER(Eigen::Vector3d, relTranslation, "RelTranslation", mc_rtc::schema::None, Eigen::Vector3d::Zero());
+  MEMBER(Eigen::Vector3d, scale, "bodyScale", mc_rtc::schema::None, Eigen::Vector3d::Zero());
 #undef MEMBER
 };
 
@@ -22,7 +31,8 @@ struct RobotUpdate
 {
   MC_RTC_NEW_SCHEMA(RobotUpdate)
 #define MEMBER(...) MC_RTC_PP_ID(MC_RTC_SCHEMA_OPTIONAL_DEFAULT_MEMBER(RobotUpdate, __VA_ARGS__))
-  MEMBER(std::vector<RobotUpdateBody>, joints, "joints to update")
+  MEMBER(std::vector<RobotUpdateJoint>, joints, "joints to update")
+  MEMBER(std::vector<RobotUpdateBody>, bodies, "bodies to update")
 #undef MEMBER
 };
 
