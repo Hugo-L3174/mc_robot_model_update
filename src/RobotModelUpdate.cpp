@@ -2,6 +2,8 @@
 
 #include <mc_control/GlobalPluginMacros.h>
 #include <mc_rbdyn/RobotLoader.h>
+#include <sch-core/S_Polyhedron.h>
+#include "Convex.h"
 
 namespace mc_plugin
 {
@@ -11,6 +13,7 @@ RobotModelUpdate::~RobotModelUpdate() = default;
 void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const mc_rtc::Configuration & config)
 {
   auto & ctl = controller.controller();
+  
   mc_rtc::log::info("RobotModelUpdate::init called with configuration:\n{}", config.dump(true, true));
   config_ = config;
   if(auto ctlConfig = ctl.config().find("RobotModelUpdate"))
@@ -18,9 +21,54 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
     config_.load(*ctlConfig);
   }
   robot_ = config_("robot", ctl.robot().name());
-
+  auto & robot = ctl.robot(robot_);
   ctl.datastore().make_call("RobotModelUpdate::LoadConfig", [this, &ctl]() { configFromXsens(ctl);});
   ctl.datastore().make_call("RobotModelUpdate::UpdateModel", [this, &ctl]() { updateRobotModel(ctl);});
+
+  mc_rtc::gui::PolyhedronConfig polyConfig;
+  polyConfig.triangle_color = {0, 0.9, 0, 0.5};
+  polyConfig.vertices_config.color = {0, 1, 0, 0.5};
+  polyConfig.show_vertices = false;
+  polyConfig.edge_config.color = {0, 1, 0, 0.5};
+  polyConfig.show_edges = false;
+
+
+  for(const auto & [convexName, convexPair] : robot.convexes())
+  {
+    const auto & bodyName = convexPair.first;
+    const auto & object = convexPair.second;
+
+    if(auto poly = std::dynamic_pointer_cast<sch::S_Polyhedron>(object))
+    {
+      const auto & convexName_ = convexName;
+      ctl.gui()->addElement({"Human", "Convex"},
+          mc_rtc::gui::Convex(convexName,
+          polyConfig,
+            [poly]() { return poly; },
+            [bodyName, convexName_, &robot]() { 
+              const sva::PTransformd X_0_b = robot.frame(bodyName).position();
+              const sva::PTransformd & X_b_c = robot.collisionTransform(convexName_);
+              sva::PTransformd X_0_c =  X_b_c * X_0_b;
+              return X_0_c; })
+      );
+    }
+  }
+
+  for (const auto & visual : robot.module()._visual)
+  {
+    for (size_t i = 0; i < visual.second.size(); i++)
+    {
+      const auto & v = visual.second[i];
+      ctl.gui()->addElement({"Human", "Visuals"},
+          mc_rtc::gui::Visual(fmt::format("{}_{}", visual.first, i), [&v]() { return v;},
+          [&robot, &v, &visual]() {
+            return v.origin * robot.frame(visual.first).position();
+
+          }));
+    }
+    
+    
+  }
 
   reset(controller);
 }
@@ -171,21 +219,97 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   // torso and hips must be scaled in Z AND Y using arms transforms and legs transforms
 
   std::vector<RobotUpdateBody> bodies;
-  Eigen::Vector3d scale(1,1,1);
+  Eigen::Vector3d scaleTorso = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleRArm = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleLArm = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleRForearm = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleLForearm = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleHips = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleRUpperLeg = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleLUpperLeg = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleRLowerLeg = Eigen::Vector3d{1, 1, 1};
+  Eigen::Vector3d scaleLLowerLeg = Eigen::Vector3d{1, 1, 1};
+
   auto & robot = ctl.robot(robot_);
 
-  // getting original relative transform of joint
+  // getting original relative transform of joints
+
+  // torso
   auto originalTransform1 = robot.mb().transform(robot.jointIndexByName("Head_0")).translation();
   auto newTransform1 = X_Hips_Head.translation();
-  scale.z() = newTransform1.z() / originalTransform1.z();
+  scaleTorso.z() = newTransform1.z() / originalTransform1.z();
 
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LArm_0")).translation();
   auto originalTransform2 = robot.mb().transform(robot.jointIndexByName("RArm_0")).translation();
   newTransform1 = X_Hips_LArm.translation();
   auto newTransform2 = X_Hips_RArm.translation();
-  scale.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
+  scaleTorso.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
 
-  bodies.push_back(RobotUpdateBody{"TorsoLink", scale});
+  // r upper arm
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("RElbow")).translation();
+  newTransform1 = X_RArm_RElbow;
+  scaleRArm.y() = newTransform1.y() / originalTransform1.y();
+  
+  // r forearm
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("RWrist_0")).translation();
+  newTransform1 = X_RForearm_RWrist.translation();
+  scaleRForearm.y() = newTransform1.y() / originalTransform1.y();
+
+  // l upper arm
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("LElbow")).translation();
+  newTransform1 = X_LArm_LElbow;
+  scaleRArm.y() = newTransform1.y() / originalTransform1.y();
+  
+  // l forearm
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("LWrist_0")).translation();
+  newTransform1 = X_LForearm_LWrist.translation();
+  scaleRForearm.y() = newTransform1.y() / originalTransform1.y();
+
+  // hips
+  originalTransform1 = (robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation() + robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation()) / 2;
+  newTransform1 = (X_Hips_LLeg.translation() + X_Hips_RLeg.translation())/2;
+  scaleHips.z() = newTransform1.z() / originalTransform1.z();
+
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation();
+  originalTransform2 = robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation();
+  newTransform1 = X_Hips_LLeg.translation();
+  newTransform2 = X_Hips_RLeg.translation();
+  scaleHips.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
+
+  // l upper leg
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("LShin_0")).translation();
+  newTransform1 = X_LLeg_LShin.translation();
+  scaleLUpperLeg.z() = newTransform1.z() / originalTransform1.z();
+
+  // r upper leg
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("RShin_0")).translation();
+  newTransform1 = X_RLeg_RShin.translation();
+  scaleRUpperLeg.z() = newTransform1.z() / originalTransform1.z();
+
+  // l lower leg
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("LAnkle_0")).translation();
+  newTransform1 = X_LShin_LAnkle.translation();
+  scaleLLowerLeg.z() = newTransform1.z() / originalTransform1.z();
+
+  // r lower leg
+  originalTransform1 = robot.mb().transform(robot.jointIndexByName("RAnkle_0")).translation();
+  newTransform1 = X_RShin_RAnkle.translation();
+  scaleRLowerLeg.z() = newTransform1.z() / originalTransform1.z();
+
+
+
+  bodies.push_back(RobotUpdateBody{"TorsoLink", scaleTorso});
+  bodies.push_back(RobotUpdateBody{"RArmLink", scaleRArm});
+  bodies.push_back(RobotUpdateBody{"RElbowLink", scaleRArm});
+  bodies.push_back(RobotUpdateBody{"RForearmLink", scaleRForearm});
+  bodies.push_back(RobotUpdateBody{"LArmLink", scaleLArm});
+  bodies.push_back(RobotUpdateBody{"LElbowLink", scaleLArm});
+  bodies.push_back(RobotUpdateBody{"LForearmLink", scaleLForearm});
+  bodies.push_back(RobotUpdateBody{"HipsLink", scaleHips});
+  bodies.push_back(RobotUpdateBody{"RLegLink", scaleRUpperLeg});
+  bodies.push_back(RobotUpdateBody{"RShinLink", scaleRLowerLeg});
+  bodies.push_back(RobotUpdateBody{"LLegLink", scaleLUpperLeg});
+  bodies.push_back(RobotUpdateBody{"LShinLink", scaleLLowerLeg});
 
 
 
@@ -193,7 +317,6 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   robotUpdate.bodies = bodies;
   robotUpdate.toConfiguration().save("/tmp/robotUpdate.json");
 
-  mc_rtc::log::info("Robot Update is:\n{}", robotUpdate.dump(true, true));
 }
 
 void RobotModelUpdate::resetToDefault(mc_rbdyn::Robot & robot)
@@ -216,7 +339,6 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
   {
     for(const auto & joint : robotUpdate.joints)
     {
-      mc_rtc::log::warning("HAS UPDATE FOR {}", joint.name);
       if(robot.hasJoint(joint.name))
       {
         auto jIdx = robot.jointIndexByName(joint.name);
@@ -260,16 +382,35 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
         if (convex.first == body.name)
         {
           auto originalConvex = convex.second.second;
-          auto originalConvexTransform = robot.collisionTransform(convex.first);
-          auto newConvex = originalConvex;
-          newConvex->addScale(body.scale.x(), body.scale.y(), 0); //body.scale.z());
-          robot.removeConvex(convex.first);
-          // careful: in our case body name and convex name are the same because there is only one convex per body
-          robot.addConvex(body.name, body.name, newConvex, originalConvexTransform);
+          // check we can actually cast the convex to a polyhedron
+          if(auto poly = std::dynamic_pointer_cast<sch::S_Polyhedron>(originalConvex))
+          {
+            auto vertices = poly->getPolyhedronAlgorithm()->vertexes_;
+            for (auto vertex : vertices)
+            {
+              auto origVertexCoord = vertex->getCoordinates();
+              vertex->setCoordinates(origVertexCoord.m_x * body.scale.x(), origVertexCoord.m_y * body.scale.y(), origVertexCoord.m_z * body.scale.z());
+            }
+            
+          }
+          // careful: if there were existing collision constraints on the convex, they need to be removed and readded
           mc_rtc::log::info("Updated convex {} with scale {}", convex.first, body.scale.transpose());
         }
       }
-      
+    }
+    
+    auto & visuals = const_cast<mc_rbdyn::RobotModule &>(robot.module())._visual;
+    for (const auto & body : robotUpdate.bodies)
+    {
+      for (auto & visual : visuals[body.name])
+      {
+        if (visual.geometry.type == rbd::parsers::Geometry::MESH)
+        {
+          auto & mesh = boost::get<rbd::parsers::Geometry::Mesh>(visual.geometry.data);
+          mesh.scaleV = mesh.scaleV.cwiseProduct(body.scale);
+          mc_rtc::log::info("Updated visual {} with scale {}", body.name, body.scale.transpose());
+        }
+      }
     }
     
     
