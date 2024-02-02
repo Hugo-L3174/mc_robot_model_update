@@ -13,7 +13,7 @@ RobotModelUpdate::~RobotModelUpdate() = default;
 void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const mc_rtc::Configuration & config)
 {
   auto & ctl = controller.controller();
-  
+
   mc_rtc::log::info("RobotModelUpdate::init called with configuration:\n{}", config.dump(true, true));
   config_ = config;
   if(auto ctlConfig = ctl.config().find("RobotModelUpdate"))
@@ -22,8 +22,8 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
   }
   robot_ = config_("robot", ctl.robot().name());
   auto & robot = ctl.robot(robot_);
-  ctl.datastore().make_call("RobotModelUpdate::LoadConfig", [this, &ctl]() { configFromXsens(ctl);});
-  ctl.datastore().make_call("RobotModelUpdate::UpdateModel", [this, &ctl]() { updateRobotModel(ctl);});
+  ctl.datastore().make_call("RobotModelUpdate::LoadConfig", [this, &ctl]() { configFromXsens(ctl); });
+  ctl.datastore().make_call("RobotModelUpdate::UpdateModel", [this, &ctl]() { updateRobotModel(ctl); });
 
   mc_rtc::gui::PolyhedronConfig polyConfig;
   polyConfig.triangle_color = {0, 0.9, 0, 0.5};
@@ -31,7 +31,6 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
   polyConfig.show_vertices = false;
   polyConfig.edge_config.color = {0, 1, 0, 0.5};
   polyConfig.show_edges = false;
-
 
   for(const auto & [convexName, convexPair] : robot.convexes())
   {
@@ -41,33 +40,31 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
     if(auto poly = std::dynamic_pointer_cast<sch::S_Polyhedron>(object))
     {
       const auto & convexName_ = convexName;
-      ctl.gui()->addElement({"Human", "Convex"},
-          mc_rtc::gui::Convex(convexName,
-          polyConfig,
-            [poly]() { return poly; },
-            [bodyName, convexName_, &robot]() { 
-              const sva::PTransformd X_0_b = robot.frame(bodyName).position();
-              const sva::PTransformd & X_b_c = robot.collisionTransform(convexName_);
-              sva::PTransformd X_0_c =  X_b_c * X_0_b;
-              return X_0_c; })
-      );
+      ctl.gui()->addElement({"Human", "Convex"}, mc_rtc::gui::Convex(
+                                                     convexName, polyConfig, [poly]() { return poly; },
+                                                     [bodyName, convexName_, &robot]()
+                                                     {
+                                                       const sva::PTransformd X_0_b = robot.frame(bodyName).position();
+                                                       const sva::PTransformd & X_b_c =
+                                                           robot.collisionTransform(convexName_);
+                                                       sva::PTransformd X_0_c = X_b_c * X_0_b;
+                                                       return X_0_c;
+                                                     }));
     }
   }
 
-  for (const auto & visual : robot.module()._visual)
+  for(const auto & visual : robot.module()._visual)
   {
-    for (size_t i = 0; i < visual.second.size(); i++)
+    for(size_t i = 0; i < visual.second.size(); i++)
     {
       const auto & v = visual.second[i];
-      ctl.gui()->addElement({"Human", "Visuals"},
-          mc_rtc::gui::Visual(fmt::format("{}_{}", visual.first, i), [&v]() { return v;},
-          [&robot, &v, &visual]() {
-            return v.origin * robot.frame(visual.first).position();
-
-          }));
+      ctl.gui()->addElement({"Human", "Visuals"}, mc_rtc::gui::Visual(
+                                                      fmt::format("{}_{}", visual.first, i), [&v]() { return v; },
+                                                      [&robot, &v, &visual]()
+                                                      {
+                                                        return v.origin * robot.frame(visual.first).position();
+                                                      }));
     }
-    
-    
   }
 
   reset(controller);
@@ -102,8 +99,12 @@ void RobotModelUpdate::reset(mc_control::MCGlobalController & controller)
                  mc_rtc::gui::Button("Load Xsens config", [this, &ctl]() { configFromXsens(ctl); }));
 
   gui.addElement(this, {},
-                 mc_rtc::gui::Button("Rescale human model", [this, &ctl]() { configFromXsens(ctl);
-                                                                             updateRobotModel(ctl);}));
+                 mc_rtc::gui::Button("Rescale human model",
+                                     [this, &ctl]()
+                                     {
+                                       configFromXsens(ctl);
+                                       updateRobotModel(ctl);
+                                     }));
 
   robotUpdate.addToGUI(gui, {"Plugin", "RobotModelUpdate", robot_}, "Update robot model from loaded config",
                        [this, &ctl]()
@@ -120,8 +121,6 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   auto X_Hips_0 = ctl.datastore()
                       .call<sva::PTransformd>("XsensPlugin::GetSegmentPose", static_cast<const std::string &>("Pelvis"))
                       .inv();
-  X_Hips_0.translation().z() += -0.09; // origin of hips is at the top
-
   auto X_0_Head =
       ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose", static_cast<const std::string &>("Head"));
   auto X_0_Torso =
@@ -155,25 +154,38 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   auto X_0_RAnkle = ctl.datastore().call<sva::PTransformd>("XsensPlugin::GetSegmentPose",
                                                            static_cast<const std::string &>("Right Foot"));
 
+  X_Hips_0.translation().z() -= 0.09; // origin of hips is at the top
+
   // step 2: convert world poses to local frames (kinematic tree from hips link)
   auto X_Hips_Head = X_0_Head * X_Hips_0;
   X_Hips_Head.translation().y() = 0; // center
+  X_Hips_Head.translation().x() -= 0.05;
 
   auto X_Hips_LArm = X_0_LArm * X_Hips_0;
+  X_Hips_LArm.translation().x() -= 0.05; // origin of arms is middle of the model whereas measure xsens is top shoulder
+  X_Hips_LArm.translation().y() -= 0.03;
+  X_Hips_LArm.translation().z() -= 0.03;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
   auto X_LArm_LForearm = X_0_LForearm * X_0_LArm.inv();
-  // X_LArm_LForearm.translation().x() += -0.03; // sensor is front of the arm
   Eigen::Vector3d X_LArm_LElbow = 0.66 * X_LArm_LForearm.translation();
-  Eigen::Vector3d X_LElbow_LForearm = 0.33 * X_LArm_LForearm.translation();
+  Eigen::Vector3d X_LElbow_LForearm = 0.34 * X_LArm_LForearm.translation();
   auto X_LForearm_LWrist = X_0_LWrist * X_0_LForearm.inv();
+  X_LForearm_LWrist.translation().x() += 0.01;
+  X_LForearm_LWrist.translation().z() -= 0.005;
 
   auto X_Hips_RArm = X_0_RArm * X_Hips_0;
+  X_Hips_RArm.translation().x() -= 0.05; // origin of arms is middle of the model whereas measure xsens is top shoulder
+  X_Hips_LArm.translation().y() += 0.03;
+  X_Hips_RArm.translation().z() -= 0.03;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
   auto X_RArm_RForearm = X_0_RForearm * X_0_RArm.inv();
-  // X_RArm_RForearm.translation().x() += -0.03; // sensor is front of the arm
+  X_RArm_RForearm.translation().x() -= 0.01;
   Eigen::Vector3d X_RArm_RElbow = 0.66 * X_RArm_RForearm.translation();
-  Eigen::Vector3d X_RElbow_RForearm = 0.33 * X_RArm_RForearm.translation();
+  Eigen::Vector3d X_RElbow_RForearm = 0.34 * X_RArm_RForearm.translation();
+  X_RElbow_RForearm.x() -= 0.01;
   auto X_RForearm_RWrist = X_0_RWrist * X_0_RForearm.inv();
+  X_RForearm_RWrist.translation().x() += 0.01;
+  X_RForearm_RWrist.translation().z() -= 0.005;
 
   auto X_Hips_LLeg = X_0_LLeg * X_Hips_0;
   auto X_LLeg_LShin = X_0_LShin * X_0_LLeg.inv();
@@ -208,7 +220,6 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   joints.push_back(RobotUpdateJoint{"RShin_0", X_RLeg_RShin.translation()});
   joints.push_back(RobotUpdateJoint{"RAnkle_0", X_RShin_RAnkle.translation()});
 
-
   // step 4: save joint configurations
   robotUpdate.joints = joints;
 
@@ -238,18 +249,33 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   auto originalTransform1 = robot.mb().transform(robot.jointIndexByName("Head_0")).translation();
   auto newTransform1 = X_Hips_Head.translation();
   scaleTorso.z() = newTransform1.z() / originalTransform1.z();
+  if(firstScale_)
+  {
+    scaleTorso.z() *= 0.9;
+  }
 
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LArm_0")).translation();
   auto originalTransform2 = robot.mb().transform(robot.jointIndexByName("RArm_0")).translation();
   newTransform1 = X_Hips_LArm.translation();
   auto newTransform2 = X_Hips_RArm.translation();
   scaleTorso.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
+  if(firstScale_)
+  {
+    scaleTorso.y() *= 0.9;
+    scaleTorso.x() *= 0.9;
+  }
 
   // r upper arm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RElbow")).translation();
+  mc_rtc::log::info("Relbow translation: {}",
+                    robot.mb().transform(robot.jointIndexByName("RElbow")).translation().transpose());
+  mc_rtc::log::info("Rwrist translation: {}",
+                    robot.mb().transform(robot.jointIndexByName("RWrist_0")).translation().transpose());
+  mc_rtc::log::info("Rarm elbow new translation: {}", X_RArm_RElbow.transpose());
+  mc_rtc::log::info("Relbow rwrist new translation: {}", X_RForearm_RWrist.translation().transpose());
   newTransform1 = X_RArm_RElbow;
   scaleRArm.y() = newTransform1.y() / originalTransform1.y();
-  
+
   // r forearm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RWrist_0")).translation();
   newTransform1 = X_RForearm_RWrist.translation();
@@ -258,45 +284,58 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   // l upper arm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LElbow")).translation();
   newTransform1 = X_LArm_LElbow;
-  scaleRArm.y() = newTransform1.y() / originalTransform1.y();
-  
+  scaleLArm.y() = newTransform1.y() / originalTransform1.y();
+
   // l forearm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LWrist_0")).translation();
   newTransform1 = X_LForearm_LWrist.translation();
-  scaleRForearm.y() = newTransform1.y() / originalTransform1.y();
+  scaleLForearm.y() = newTransform1.y() / originalTransform1.y();
 
   // hips
-  originalTransform1 = (robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation() + robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation()) / 2;
-  newTransform1 = (X_Hips_LLeg.translation() + X_Hips_RLeg.translation())/2;
+  originalTransform1 = (robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation()
+                        + robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation())
+                       / 2;
+  newTransform1 = (X_Hips_LLeg.translation() + X_Hips_RLeg.translation()) / 2;
   scaleHips.z() = newTransform1.z() / originalTransform1.z();
+  if(firstScale_)
+  {
+    scaleHips.x() *= 0.9;
+  }
 
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation();
   originalTransform2 = robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation();
   newTransform1 = X_Hips_LLeg.translation();
   newTransform2 = X_Hips_RLeg.translation();
   scaleHips.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
+  auto bottomScale = 1; // scaleHips.y();
 
   // l upper leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LShin_0")).translation();
   newTransform1 = X_LLeg_LShin.translation();
   scaleLUpperLeg.z() = newTransform1.z() / originalTransform1.z();
+  scaleLUpperLeg.y() = bottomScale;
+  scaleLUpperLeg.x() = bottomScale;
 
   // r upper leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RShin_0")).translation();
   newTransform1 = X_RLeg_RShin.translation();
   scaleRUpperLeg.z() = newTransform1.z() / originalTransform1.z();
+  scaleRUpperLeg.y() = bottomScale;
+  scaleRUpperLeg.x() = bottomScale;
 
   // l lower leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LAnkle_0")).translation();
   newTransform1 = X_LShin_LAnkle.translation();
   scaleLLowerLeg.z() = newTransform1.z() / originalTransform1.z();
+  scaleLLowerLeg.y() = bottomScale;
+  scaleLLowerLeg.x() = bottomScale;
 
   // r lower leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RAnkle_0")).translation();
   newTransform1 = X_RShin_RAnkle.translation();
   scaleRLowerLeg.z() = newTransform1.z() / originalTransform1.z();
-
-
+  scaleRLowerLeg.y() = bottomScale;
+  scaleRLowerLeg.x() = bottomScale;
 
   bodies.push_back(RobotUpdateBody{"TorsoLink", scaleTorso});
   bodies.push_back(RobotUpdateBody{"RArmLink", scaleRArm});
@@ -311,12 +350,13 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   bodies.push_back(RobotUpdateBody{"LLegLink", scaleLUpperLeg});
   bodies.push_back(RobotUpdateBody{"LShinLink", scaleLLowerLeg});
 
-
-
   // step 6: save scale configurations
   robotUpdate.bodies = bodies;
   robotUpdate.toConfiguration().save("/tmp/robotUpdate.json");
-
+  if(firstScale_)
+  {
+    firstScale_ = false;
+  }
 }
 
 void RobotModelUpdate::resetToDefault(mc_rbdyn::Robot & robot)
@@ -352,16 +392,16 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
                           originalTransform.translation().transpose(), newTransform.translation().transpose());
       }
     }
-    
-    for (const auto & surface : robot.availableSurfaces())
+
+    for(const auto & surface : robot.availableSurfaces())
     {
       // for all surfaces on the robot, find the parent body
       auto parentName = robot.surface(surface).bodyName();
       auto newScale = Eigen::Vector3d(1, 1, 1);
-      for (const auto & body : robotUpdate.bodies)
+      for(const auto & body : robotUpdate.bodies)
       {
         // take new scale of the parent body of the surface
-        if (body.name == parentName)
+        if(body.name == parentName)
         {
           newScale = body.scale;
         }
@@ -374,37 +414,37 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
       mc_rtc::log::info("Updated transform for surface {} from {} to {}", surface,
                         originalTransform.translation().transpose(), newTransform.translation().transpose());
     }
-    
-    for (const auto & convex : robot.convexes())
+
+    for(const auto & convex : robot.convexes())
     {
-      for (const auto & body : robotUpdate.bodies)
+      for(const auto & body : robotUpdate.bodies)
       {
-        if (convex.first == body.name)
+        if(convex.first == body.name)
         {
           auto originalConvex = convex.second.second;
           // check we can actually cast the convex to a polyhedron
           if(auto poly = std::dynamic_pointer_cast<sch::S_Polyhedron>(originalConvex))
           {
             auto vertices = poly->getPolyhedronAlgorithm()->vertexes_;
-            for (auto vertex : vertices)
+            for(auto vertex : vertices)
             {
               auto origVertexCoord = vertex->getCoordinates();
-              vertex->setCoordinates(origVertexCoord.m_x * body.scale.x(), origVertexCoord.m_y * body.scale.y(), origVertexCoord.m_z * body.scale.z());
+              vertex->setCoordinates(origVertexCoord.m_x * body.scale.x(), origVertexCoord.m_y * body.scale.y(),
+                                     origVertexCoord.m_z * body.scale.z());
             }
-            
           }
           // careful: if there were existing collision constraints on the convex, they need to be removed and readded
           mc_rtc::log::info("Updated convex {} with scale {}", convex.first, body.scale.transpose());
         }
       }
     }
-    
+
     auto & visuals = const_cast<mc_rbdyn::RobotModule &>(robot.module())._visual;
-    for (const auto & body : robotUpdate.bodies)
+    for(const auto & body : robotUpdate.bodies)
     {
-      for (auto & visual : visuals[body.name])
+      for(auto & visual : visuals[body.name])
       {
-        if (visual.geometry.type == rbd::parsers::Geometry::MESH)
+        if(visual.geometry.type == rbd::parsers::Geometry::MESH)
         {
           auto & mesh = boost::get<rbd::parsers::Geometry::Mesh>(visual.geometry.data);
           mesh.scaleV = mesh.scaleV.cwiseProduct(body.scale);
@@ -412,8 +452,7 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
         }
       }
     }
-    
-    
+
     robot.forwardKinematics();
     robot.forwardVelocity();
     robot.forwardAcceleration();

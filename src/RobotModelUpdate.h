@@ -57,6 +57,7 @@ protected:
 
 protected:
   std::string robot_;
+  bool firstScale_ = true;
   RobotUpdate robotUpdate;
 
 private:

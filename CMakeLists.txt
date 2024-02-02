@@ -21,8 +21,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/etc/RobotModelUpdate.yaml"
 
 set(plugin_SRC src/RobotModelUpdate.cpp)
 
-set(plugin_HDR src/RobotModelUpdate.h
-               src/Convex.h)
+set(plugin_HDR src/RobotModelUpdate.h src/Convex.h)
 
 set(AUTOLOAD_RobotModelUpdate_PLUGIN
     OFF
