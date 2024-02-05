@@ -159,7 +159,7 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   // step 2: convert world poses to local frames (kinematic tree from hips link)
   auto X_Hips_Head = X_0_Head * X_Hips_0;
   X_Hips_Head.translation().y() = 0; // center
-  X_Hips_Head.translation().x() -= 0.05;
+  X_Hips_Head.translation().x() -= 0.04;
 
   auto X_Hips_LArm = X_0_LArm * X_Hips_0;
   X_Hips_LArm.translation().x() -= 0.05; // origin of arms is middle of the model whereas measure xsens is top shoulder
@@ -413,6 +413,8 @@ void RobotModelUpdate::updateRobotModel(mc_control::MCController & ctl)
       robot.surface(surface).X_b_s(newTransform);
       mc_rtc::log::info("Updated transform for surface {} from {} to {}", surface,
                         originalTransform.translation().transpose(), newTransform.translation().transpose());
+      // XXX update associated frame as well ! after instanciation frames and surfaces are dissociated
+      robot.frame(surface).X_p_f(newTransform);
     }
 
     for(const auto & convex : robot.convexes())
