@@ -41,7 +41,7 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
     {
       const auto & convexName_ = convexName;
       ctl.gui()->addElement({"Human", "Convex"}, mc_rtc::gui::Convex(
-                                                     convexName, polyConfig, [poly]() { return poly; },
+                                                     convexName, polyConfig, [poly]() -> const auto & { return poly; },
                                                      [bodyName, convexName_, &robot]()
                                                      {
                                                        const sva::PTransformd X_0_b = robot.frame(bodyName).position();
@@ -59,13 +59,16 @@ void RobotModelUpdate::init(mc_control::MCGlobalController & controller, const m
     {
       const auto & v = visual.second[i];
       ctl.gui()->addElement({"Human", "Visuals"}, mc_rtc::gui::Visual(
-                                                      fmt::format("{}_{}", visual.first, i), [&v]() { return v; },
-                                                      [&robot, &v, &visual]()
+                                                      fmt::format("{}_{}", visual.first, i), [&v]() -> const auto & { return v; },
+                                                      [&robot, &visual]()
                                                       {
-                                                        return v.origin * robot.frame(visual.first).position();
+                                                        return robot.collisionTransform(visual.first) * robot.frame(visual.first).position();
                                                       }));
     }
   }
+
+  // remove automatically added gui robot model (not updated)
+  ctl.gui()->removeElement({"Robots"}, "human");
 
   reset(controller);
 }
@@ -160,11 +163,12 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   auto X_Hips_Head = X_0_Head * X_Hips_0;
   X_Hips_Head.translation().y() = 0; // center
   X_Hips_Head.translation().x() -= 0.04;
+  X_Hips_Head.translation().z() -= 0.1; 
 
   auto X_Hips_LArm = X_0_LArm * X_Hips_0;
   X_Hips_LArm.translation().x() -= 0.05; // origin of arms is middle of the model whereas measure xsens is top shoulder
   X_Hips_LArm.translation().y() -= 0.03;
-  X_Hips_LArm.translation().z() -= 0.03;
+  X_Hips_LArm.translation().z() -= 0.09;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
   auto X_LArm_LForearm = X_0_LForearm * X_0_LArm.inv();
   Eigen::Vector3d X_LArm_LElbow = 0.66 * X_LArm_LForearm.translation();
@@ -176,7 +180,7 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   auto X_Hips_RArm = X_0_RArm * X_Hips_0;
   X_Hips_RArm.translation().x() -= 0.05; // origin of arms is middle of the model whereas measure xsens is top shoulder
   X_Hips_LArm.translation().y() += 0.03;
-  X_Hips_RArm.translation().z() -= 0.03;
+  X_Hips_RArm.translation().z() -= 0.09;
   // Upper arm model is ~2/3 shirt and ~1/3 upper arm to the elbow:
   auto X_RArm_RForearm = X_0_RForearm * X_0_RArm.inv();
   X_RArm_RForearm.translation().x() -= 0.01;
@@ -241,6 +245,21 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   Eigen::Vector3d scaleRLowerLeg = Eigen::Vector3d{1, 1, 1};
   Eigen::Vector3d scaleLLowerLeg = Eigen::Vector3d{1, 1, 1};
 
+  if (firstScale_)
+  {
+    scaleTorso = Eigen::Vector3d{0.8, 0.85, 0.9};
+    scaleRArm = Eigen::Vector3d{0.85, 1, 0.85};
+    scaleLArm = Eigen::Vector3d{0.85, 1, 0.85};
+    scaleRForearm = Eigen::Vector3d{0.9, 1, 0.9};
+    scaleLForearm = Eigen::Vector3d{0.9, 1, 0.9};
+    scaleHips = Eigen::Vector3d{0.9, 1, 0.9};
+    scaleRUpperLeg = Eigen::Vector3d{0.9, 0.9, 0.9};
+    scaleLUpperLeg = Eigen::Vector3d{0.9, 0.9, 0.9};
+    scaleRLowerLeg = Eigen::Vector3d{0.9, 0.9, 0.9};
+    scaleLLowerLeg = Eigen::Vector3d{0.9, 0.9, 0.9};
+  }
+  
+
   auto & robot = ctl.robot(robot_);
 
   // getting original relative transform of joints
@@ -248,22 +267,13 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   // torso
   auto originalTransform1 = robot.mb().transform(robot.jointIndexByName("Head_0")).translation();
   auto newTransform1 = X_Hips_Head.translation();
-  scaleTorso.z() = newTransform1.z() / originalTransform1.z();
-  if(firstScale_)
-  {
-    scaleTorso.z() *= 0.9;
-  }
+  scaleTorso.z() *= newTransform1.z() / originalTransform1.z();
 
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LArm_0")).translation();
   auto originalTransform2 = robot.mb().transform(robot.jointIndexByName("RArm_0")).translation();
   newTransform1 = X_Hips_LArm.translation();
   auto newTransform2 = X_Hips_RArm.translation();
-  scaleTorso.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
-  if(firstScale_)
-  {
-    scaleTorso.y() *= 0.9;
-    scaleTorso.x() *= 0.9;
-  }
+  scaleTorso.y() *= (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
 
   // r upper arm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RElbow")).translation();
@@ -274,68 +284,55 @@ void RobotModelUpdate::configFromXsens(mc_control::MCController & ctl)
   mc_rtc::log::info("Rarm elbow new translation: {}", X_RArm_RElbow.transpose());
   mc_rtc::log::info("Relbow rwrist new translation: {}", X_RForearm_RWrist.translation().transpose());
   newTransform1 = X_RArm_RElbow;
-  scaleRArm.y() = newTransform1.y() / originalTransform1.y();
+  scaleRArm.y() *= newTransform1.y() / originalTransform1.y();
 
   // r forearm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RWrist_0")).translation();
   newTransform1 = X_RForearm_RWrist.translation();
-  scaleRForearm.y() = newTransform1.y() / originalTransform1.y();
+  scaleRForearm.y() *= newTransform1.y() / originalTransform1.y();
 
   // l upper arm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LElbow")).translation();
   newTransform1 = X_LArm_LElbow;
-  scaleLArm.y() = newTransform1.y() / originalTransform1.y();
+  scaleLArm.y() *= newTransform1.y() / originalTransform1.y();
 
   // l forearm
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LWrist_0")).translation();
   newTransform1 = X_LForearm_LWrist.translation();
-  scaleLForearm.y() = newTransform1.y() / originalTransform1.y();
+  scaleLForearm.y() *= newTransform1.y() / originalTransform1.y();
 
   // hips
   originalTransform1 = (robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation()
                         + robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation())
                        / 2;
   newTransform1 = (X_Hips_LLeg.translation() + X_Hips_RLeg.translation()) / 2;
-  scaleHips.z() = newTransform1.z() / originalTransform1.z();
-  if(firstScale_)
-  {
-    scaleHips.x() *= 0.9;
-  }
+  scaleHips.z() *= newTransform1.z() / originalTransform1.z();
 
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LLeg_0")).translation();
   originalTransform2 = robot.mb().transform(robot.jointIndexByName("RLeg_0")).translation();
   newTransform1 = X_Hips_LLeg.translation();
   newTransform2 = X_Hips_RLeg.translation();
-  scaleHips.y() = (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
-  auto bottomScale = 1; // scaleHips.y();
+  scaleHips.y() *= (newTransform1.y() - newTransform2.y()) / (originalTransform1.y() - originalTransform2.y());
 
   // l upper leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LShin_0")).translation();
   newTransform1 = X_LLeg_LShin.translation();
-  scaleLUpperLeg.z() = newTransform1.z() / originalTransform1.z();
-  scaleLUpperLeg.y() = bottomScale;
-  scaleLUpperLeg.x() = bottomScale;
+  scaleLUpperLeg.z() *= newTransform1.z() / originalTransform1.z();
 
   // r upper leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RShin_0")).translation();
   newTransform1 = X_RLeg_RShin.translation();
-  scaleRUpperLeg.z() = newTransform1.z() / originalTransform1.z();
-  scaleRUpperLeg.y() = bottomScale;
-  scaleRUpperLeg.x() = bottomScale;
+  scaleRUpperLeg.z() *= newTransform1.z() / originalTransform1.z();
 
   // l lower leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("LAnkle_0")).translation();
   newTransform1 = X_LShin_LAnkle.translation();
-  scaleLLowerLeg.z() = newTransform1.z() / originalTransform1.z();
-  scaleLLowerLeg.y() = bottomScale;
-  scaleLLowerLeg.x() = bottomScale;
+  scaleLLowerLeg.z() *= newTransform1.z() / originalTransform1.z();
 
   // r lower leg
   originalTransform1 = robot.mb().transform(robot.jointIndexByName("RAnkle_0")).translation();
   newTransform1 = X_RShin_RAnkle.translation();
-  scaleRLowerLeg.z() = newTransform1.z() / originalTransform1.z();
-  scaleRLowerLeg.y() = bottomScale;
-  scaleRLowerLeg.x() = bottomScale;
+  scaleRLowerLeg.z() *= newTransform1.z() / originalTransform1.z();
 
   bodies.push_back(RobotUpdateBody{"TorsoLink", scaleTorso});
   bodies.push_back(RobotUpdateBody{"RArmLink", scaleRArm});
